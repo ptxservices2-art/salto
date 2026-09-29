@@ -1,0 +1,81 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: #100e18;
+  color: #fff6e8;
+  font-family: "Segoe UI", sans-serif;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  overflow: hidden;
+}
+
+canvas {
+  width: min(960px, calc(100vw - 24px), calc((100vh - 120px) * 16 / 9));
+  height: auto;
+  background: #14182e;
+  border-radius: 16px;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+  touch-action: none;
+  outline: none;
+}
+
+#touch {
+  display: none;
+  gap: 10px;
+  width: min(960px, 100%);
+  padding: 0 16px 12px;
+}
+
+body[data-state="playing"] #touch {
+  display: flex;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  #touch {
+    display: none !important;
+  }
+
+  canvas {
+    width: min(960px, calc(100vw - 32px), calc((100vh - 32px) * 16 / 9));
+  }
+}
+
+#touch button {
+  flex: 1;
+  height: 64px;
+  border: 0;
+  border-radius: 14px;
+  background: #e07a3d;
+  color: #2b160c;
+  font: 700 18px "Segoe UI", sans-serif;
+  touch-action: manipulation;
+  user-select: none;
+}
+
+#touch button:last-child {
+  flex: 1.4;
+  background: #f2c14e;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
