@@ -1,15 +1,13 @@
-// Salto — platformer de três fases.
-// Para criar outra fase, copie um item de LEVELS e ajuste os números.
-// x cresce para a direita. y cresce para baixo. O chão fica em y = 450.
-// O raposo tem 40px de altura: o spawn.y é o topo da plataforma menos 40.
+// Salto — o servidor confirma fase, moeda, morte e bandeira.
+// O navegador só desenha a fase atual e prevê o pulo.
 
 const W = 960;
 const H = 540;
-const ZOOM = 2;
+const ZOOM = 1.5;
 const PLAYER_W = 30;
 const PLAYER_H = 40;
 
-const TUNE = {
+const TUNE = Object.freeze({
   gravity: 2200,
   jump: -720,
   speed: 280,
@@ -21,93 +19,34 @@ const TUNE = {
   jumpBuffer: 0.14,
   shortHop: 2.6,
   maxFall: 900,
+});
+
+const LOBBY = {
+  name: "Lobby",
+  w: 2200,
+  spawn: { x: 980, y: 410 },
+  goal: { x: -400, y: 0, w: 1, h: 1 },
+  platforms: [
+    { x: 0, y: 450, w: 2200, h: 220 },
+    { x: 240, y: 390, w: 160, h: 28 },
+    { x: 1680, y: 370, w: 180, h: 28 },
+    { x: 1040, y: 320, w: 140, h: 24 },
+  ],
 };
 
-const LEVELS = [
-  {
-    name: "Primeiros passos",
-    w: 2500,
-    spawn: { x: 70, y: 410 },
-    goal: { x: 2340, y: 380, w: 36, h: 70 },
-    platforms: [
-      { x: 0, y: 450, w: 520, h: 200 },
-      { x: 640, y: 450, w: 300, h: 200 },
-      { x: 1060, y: 410, w: 250, h: 220 },
-      { x: 1430, y: 370, w: 240, h: 260 },
-      { x: 1790, y: 420, w: 210, h: 220 },
-      { x: 2120, y: 450, w: 380, h: 200 },
-    ],
-    coins: [
-      { x: 260, y: 418, r: 12 },
-      { x: 760, y: 418, r: 12 },
-      { x: 1160, y: 378, r: 12 },
-      { x: 1520, y: 278, r: 12 },
-      { x: 1860, y: 388, r: 12 },
-      { x: 2280, y: 418, r: 12 },
-    ],
-    spikes: [],
-  },
-  {
-    name: "O vão",
-    w: 2900,
-    spawn: { x: 64, y: 410 },
-    goal: { x: 2760, y: 280, w: 36, h: 70 },
-    platforms: [
-      { x: 0, y: 450, w: 420, h: 200 },
-      { x: 540, y: 400, w: 170, h: 36 },
-      { x: 850, y: 340, w: 160, h: 36 },
-      { x: 1160, y: 400, w: 170, h: 36 },
-      { x: 1465, y: 450, w: 380, h: 200 },
-      { x: 1960, y: 400, w: 180, h: 36 },
-      { x: 2260, y: 350, w: 170, h: 36 },
-      { x: 2550, y: 350, w: 350, h: 200 },
-    ],
-    coins: [
-      { x: 250, y: 400, r: 12 },
-      { x: 920, y: 280, r: 12 },
-      { x: 1660, y: 390, r: 12 },
-      { x: 2040, y: 360, r: 12 },
-      { x: 2340, y: 310, r: 12 },
-      { x: 2720, y: 308, r: 12 },
-    ],
-    spikes: [],
-  },
-  {
-    name: "Espinhos",
-    w: 3000,
-    spawn: { x: 64, y: 410 },
-    goal: { x: 2860, y: 260, w: 36, h: 70 },
-    platforms: [
-      { x: 0, y: 450, w: 520, h: 200 },
-      { x: 600, y: 450, w: 150, h: 32, motion: { axis: "x", range: 160, speed: 1.05 } },
-      { x: 860, y: 450, w: 300, h: 200 },
-      { x: 1260, y: 450, w: 620, h: 200 },
-      { x: 2010, y: 390, w: 200, h: 40 },
-      { x: 2340, y: 330, w: 180, h: 40 },
-      { x: 2660, y: 330, w: 340, h: 200 },
-    ],
-    coins: [
-      { x: 420, y: 370, r: 12 },
-      { x: 700, y: 420, r: 12 },
-      { x: 980, y: 418, r: 12 },
-      { x: 1510, y: 370, r: 12 },
-      { x: 2100, y: 350, r: 12 },
-      { x: 2800, y: 290, r: 12 },
-    ],
-    spikes: [
-      { x: 280, y: 432, w: 80, h: 18 },
-      { x: 1420, y: 432, w: 100, h: 18 },
-      { x: 1600, y: 432, w: 80, h: 18 },
-    ],
-  },
-];
+let levelCount = 20;
+let TOTAL_COINS = 0;
 
-const TOTAL_COINS = LEVELS.reduce((sum, level) => sum + level.coins.length, 0);
+const gfx = Salto.Application.create({
+  canvas: document.getElementById("game"),
+  width: W,
+  height: H,
+  zoom: ZOOM,
+}).graphics;
+const canvas = gfx.canvas;
+const ctx = gfx.ctx;
 
-const canvas = document.getElementById("game");
-const ctx = canvas.getContext("2d");
-
-const keys = new Set();
+const keys = Salto.Input.held;
 const player = {
   x: 0,
   y: 0,
@@ -141,28 +80,53 @@ const clouds = [
 let state = "menu";
 let level = null;
 let levelIndex = 0;
-let cam = 0;
-let camY = 180;
 let time = 0;
 let elapsed = 0;
 let lives = 3;
 let bank = 0;
 let intro = 0;
-let shake = 0;
 let particles = [];
 let audioCtx = null;
 let muted = false;
 let jumpedOnce = false;
+let profile = null;
+let nextSync = 0;
+let nextPose = 0;
+let poseBusy = false;
+let lobbyAnchorX = LOBBY.spawn.x;
+let emoteUntil = 0;
+let mates = [];
+let matchBusy = false;
+let sampleBusy = false;
+let sampleQueued = false;
+let nextSample = 0;
 
 function clamp(v, a, b) {
   return Math.max(a, Math.min(b, v));
 }
 
+function placeCamera(snap) {
+  const camera = Salto.Camera.main;
+  if (!camera || state === "menu" || !level) return;
+  const focus = cameraFocus();
+  if (snap) {
+    camera.transform.x = focus.x;
+    camera.transform.y = focus.y;
+    return;
+  }
+  const ease = 1 - Math.exp(-6 * Salto.Time.deltaTime);
+  camera.transform.x += (focus.x - camera.transform.x) * ease;
+  camera.transform.y += (focus.y - camera.transform.y) * ease;
+}
+
 function cameraFocus() {
   const viewW = W / ZOOM;
+  const viewH = H / ZOOM;
+  const ahead = player.facing * 110;
+  const feet = player.y + player.h;
   return {
-    x: clamp(player.x + player.w / 2 - viewW / 2, 0, Math.max(0, level.w - viewW)),
-    y: clamp(player.y - 155, 70, 250),
+    x: clamp(player.x + player.w / 2 - viewW * 0.4 + ahead, 0, Math.max(0, level.w - viewW)),
+    y: clamp(feet - viewH * 0.78, 0, 260),
   };
 }
 
@@ -179,14 +143,7 @@ function hitCoin(rect, coin) {
 }
 
 function pathRound(x, y, w, h, r) {
-  const radius = Math.max(0, Math.min(r, w / 2, h / 2));
-  ctx.beginPath();
-  ctx.moveTo(x + radius, y);
-  ctx.arcTo(x + w, y, x + w, y + h, radius);
-  ctx.arcTo(x + w, y + h, x, y + h, radius);
-  ctx.arcTo(x, y + h, x, y, radius);
-  ctx.arcTo(x, y, x + w, y, radius);
-  ctx.closePath();
+  gfx.roundRect(x, y, w, h, r);
 }
 
 function ensureAudio() {
@@ -259,9 +216,9 @@ function placeMover(platform) {
   platform.dy = 0;
 }
 
-function startLevel(index) {
-  levelIndex = index;
-  const src = LEVELS[index];
+function adoptLevel(data) {
+  const src = data.level;
+  levelIndex = data.levelIndex;
   level = {
     name: src.name,
     w: src.w,
@@ -289,83 +246,215 @@ function startLevel(index) {
   player.riding = null;
   player.land = 0;
   player.facing = 1;
+  lives = data.lives;
+  bank = data.coins;
+  elapsed = data.elapsed;
   intro = 1.8;
-  shake = 0;
   particles = [];
-  const focus = cameraFocus();
-  cam = focus.x;
-  camY = focus.y;
+  const camera = Salto.Camera.main;
+  if (camera) {
+    camera.zoom = ZOOM;
+    camera.shake = 0;
+  }
+  placeCamera(true);
   state = "playing";
-  document.body.dataset.state = state;
+  if (profile) {
+    profile.level = data.levelIndex;
+    profile.coins = data.coins;
+    profile.elapsed = data.elapsed;
+    profile.completed = Boolean(data.completed);
+  }
+  applyBodyState();
+  renderPresence();
   keys.clear();
+  nextSample = 0;
 }
 
-function startGame() {
-  bank = 0;
-  lives = 3;
-  elapsed = 0;
-  jumpedOnce = false;
-  startLevel(0);
+async function requestMatch(replay) {
+  if (!profile || matchBusy) return;
+  matchBusy = true;
+  try {
+    const response = await fetch("/api/match/start", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(replay ? { replay: true } : {}),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.level) return;
+    adoptLevel(data);
+  } catch (err) {
+    /* a partida só abre com o servidor no ar */
+  } finally {
+    matchBusy = false;
+  }
 }
 
-function respawn() {
-  player.x = level.spawn.x;
-  player.y = level.spawn.y;
+function enterLobby() {
+  level = {
+    name: LOBBY.name,
+    w: LOBBY.w,
+    spawn: { ...LOBBY.spawn },
+    goal: { ...LOBBY.goal },
+    platforms: LOBBY.platforms.map((platform) => ({
+      ...platform,
+      dx: 0,
+      dy: 0,
+      baseX: platform.x,
+      baseY: platform.y,
+      motion: null,
+    })),
+    coins: [],
+    spikes: [],
+  };
+  player.x = lobbyAnchorX;
+  player.y = LOBBY.spawn.y;
   player.vx = 0;
   player.vy = 0;
   player.onGround = false;
-  player.riding = null;
   player.coyote = 0;
-  const focus = cameraFocus();
-  cam = focus.x;
-  camY = focus.y;
+  player.jumpBuffer = 0;
+  player.riding = null;
+  player.land = 0;
+  const camera = Salto.Camera.main;
+  if (camera) camera.zoom = ZOOM;
+  placeCamera(true);
+  keys.clear();
+  state = "lobby";
+  applyBodyState();
+  renderPresence();
 }
 
-function die() {
-  sfx("hurt");
-  shake = 14;
-  burst(player.x + player.w / 2, player.y + player.h / 2, "#ffb4a2", 14);
-  lives -= 1;
-  if (lives <= 0) {
-    state = "gameover";
-    document.body.dataset.state = state;
-    return;
-  }
-  respawn();
+function leaveMatch() {
+  if (!profile || state === "lobby" || state === "menu") return;
+  fetch("/api/match/leave", { method: "POST" }).catch(() => {}).finally(() => enterLobby());
 }
 
-function reachGoal() {
-  const got = level.coins.filter((coin) => coin.taken).length;
-  burst(level.goal.x + 16, level.goal.y + 20, "#f2c14e", 18);
-  sfx("win");
-  if (levelIndex >= LEVELS.length - 1) {
-    bank += got;
-    state = "victory";
-  } else {
-    state = "cleared";
-  }
-  document.body.dataset.state = state;
+function startGame() {
+  if (!profile) return;
+  requestMatch(Boolean(profile.completed));
 }
 
 function continueGame() {
-  if (state === "menu") {
-    startGame();
+  if (!profile || panelsOpen() || state === "lobby") return;
+  if (state === "cleared" || state === "gameover") {
+    requestMatch(false);
     return;
   }
-  if (state === "cleared") {
-    bank += level.coins.filter((coin) => coin.taken).length;
-    startLevel(levelIndex + 1);
+  if (state === "victory") showSave();
+}
+
+function hurtJuice() {
+  sfx("hurt");
+  const camera = Salto.Camera.main;
+  if (camera) camera.shake = 14;
+  burst(player.x + player.w / 2, player.y + player.h / 2, "#ffb4a2", 14);
+}
+
+function markCoins(indexes) {
+  if (!level || !Array.isArray(indexes)) return;
+  for (const index of indexes) {
+    const coin = level.coins[index];
+    if (!coin || coin.taken) continue;
+    coin.taken = true;
+    burst(coin.x, coin.y, "#f2c14e", 10);
+    sfx("coin");
+  }
+}
+
+function applyVerdict(data) {
+  if (!profile || !data) return;
+  if (typeof data.lives === "number") lives = data.lives;
+  if (typeof data.coins === "number") {
+    bank = data.coins;
+    profile.coins = data.coins;
+  }
+  if (data.event === "clear") {
+    if (typeof data.elapsed === "number") {
+      elapsed = data.elapsed;
+      profile.elapsed = data.elapsed;
+    }
+    if (typeof data.level === "number") profile.level = data.level;
+    profile.completed = Boolean(data.completed);
+    markCoins(data.coinIndexes);
+    burst(level.goal.x + 16, level.goal.y + 20, "#f2c14e", 18);
+    sfx("win");
+    if (profile.completed) {
+      state = "victory";
+      showSave();
+    } else {
+      state = "cleared";
+      applyBodyState();
+    }
+    renderPresence();
     return;
   }
-  if (state === "gameover") {
-    lives = 3;
-    startLevel(levelIndex);
+  if (data.event === "kick") {
+    enterLobby();
     return;
   }
-  if (state === "victory") {
-    state = "menu";
-    document.body.dataset.state = state;
+  if (data.event === "snap") {
+    player.x = data.x;
+    player.y = data.y;
+    player.vx = 0;
+    player.vy = 0;
+    return;
   }
+  if (data.event === "coin") {
+    markCoins(data.coinIndexes);
+    return;
+  }
+  if (data.event === "dead") {
+    hurtJuice();
+    player.x = data.x;
+    player.y = data.y;
+    player.vx = 0;
+    player.vy = 0;
+    player.onGround = false;
+    player.riding = null;
+    placeCamera(true);
+    return;
+  }
+  if (data.event === "retry") {
+    hurtJuice();
+    if (level) level.coins.forEach((coin) => { coin.taken = false; });
+    player.x = data.x;
+    player.y = data.y;
+    player.vx = 0;
+    player.vy = 0;
+    state = "gameover";
+    applyBodyState();
+  }
+}
+
+function reportSample(force) {
+  if (state !== "playing" || !level) return;
+  const now = performance.now();
+  if (!force && now < nextSample) return;
+  if (sampleBusy) {
+    if (force) sampleQueued = true;
+    return;
+  }
+  sampleBusy = true;
+  nextSample = now + 80;
+  fetch("/api/match/sample", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ x: player.x, y: player.y }),
+  }).then(async (response) => {
+    if (response.status === 409) {
+      requestMatch(false);
+      return null;
+    }
+    return response.ok ? response.json() : null;
+  }).then((data) => {
+    if (data) applyVerdict(data);
+  }).catch(() => {}).finally(() => {
+    sampleBusy = false;
+    if (sampleQueued && state === "playing") {
+      sampleQueued = false;
+      reportSample(true);
+    }
+  });
 }
 
 function updateMovers() {
@@ -404,6 +493,7 @@ function updatePlay(dt) {
     if (Math.abs(player.vx) <= friction) player.vx = 0;
     else player.vx -= Math.sign(player.vx) * friction;
   }
+  player.vx = clamp(player.vx, -TUNE.speed, TUNE.speed);
 
   updateMovers();
 
@@ -493,27 +583,25 @@ function updatePlay(dt) {
     burst(player.x + player.w / 2, player.y + player.h, "#c4a574", 1);
   }
 
-  if (player.y > 720) {
-    die();
+  if (state === "lobby") {
+    player.x = clamp(player.x, 8, level.w - player.w - 8);
+    lobbyAnchorX = player.x;
+    if (player.y > 720) {
+      player.x = LOBBY.spawn.x;
+      player.y = LOBBY.spawn.y;
+      player.vx = 0;
+      player.vy = 0;
+      lobbyAnchorX = player.x;
+    }
     return;
   }
 
-  for (const spike of level.spikes) {
-    if (hit(player, spike)) {
-      die();
-      return;
-    }
+  if (player.y > 720 || level.spikes.some((spike) => hit(player, spike)) || hit(player, level.goal)) {
+    reportSample(true);
+    return;
   }
 
-  for (const coin of level.coins) {
-    if (coin.taken) continue;
-    if (!hitCoin(player, coin)) continue;
-    coin.taken = true;
-    burst(coin.x, coin.y, "#f2c14e", 10);
-    sfx("coin");
-  }
-
-  if (hit(player, level.goal)) reachGoal();
+  reportSample(false);
 }
 
 function updateParticles(dt) {
@@ -528,36 +616,31 @@ function updateParticles(dt) {
 
 function update(dt) {
   time += dt;
-  if (shake > 0) shake = Math.max(0, shake - dt * 28);
   if (intro > 0) intro -= dt;
   updateParticles(dt);
-  if (state === "playing") {
-    elapsed += dt;
+  if (state === "playing" || state === "lobby") {
+    if (state === "playing") elapsed += dt;
     updatePlay(dt);
   }
-  if (state !== "menu" && level) {
-    const target = cameraFocus();
-    const ease = 1 - Math.exp(-6 * dt);
-    cam += (target.x - cam) * ease;
-    camY += (target.y - camY) * ease;
+  if (state === "lobby") {
+    for (const mate of mates) {
+      if (mate.drawX == null) mate.drawX = mate.x;
+      if (mate.drawY == null) mate.drawY = mate.y;
+      const moved = Math.abs(mate.x - mate.drawX) > 0.6;
+      mate.drawX += (mate.x - mate.drawX) * 0.28;
+      mate.drawY += (mate.y - mate.drawY) * 0.28;
+      if (moved) mate.walk = (mate.walk || 0) + dt * 14;
+    }
   }
+  if (state !== "menu" && level) placeCamera(false);
 }
 
 function text(str, x, y, size, color, align = "center", weight = 700) {
-  ctx.fillStyle = color;
-  ctx.font = `${weight} ${size}px "Segoe UI", sans-serif`;
-  ctx.textAlign = align;
-  ctx.textBaseline = "middle";
-  ctx.fillText(str, x, y);
+  gfx.text(str, x, y, size, color, align, weight);
 }
 
 function textShadow(str, x, y, size, color, align = "center") {
-  ctx.save();
-  ctx.shadowColor = "rgba(0, 0, 0, 0.45)";
-  ctx.shadowBlur = 8;
-  ctx.shadowOffsetY = 2;
-  text(str, x, y, size, color, align);
-  ctx.restore();
+  gfx.textShadow(str, x, y, size, color, align);
 }
 
 function drawSky() {
@@ -611,7 +694,7 @@ function drawHills(color, amplitude, base, parallax, freq) {
   ctx.fillStyle = color;
   ctx.beginPath();
   ctx.moveTo(0, H);
-  const offset = cam * parallax;
+  const offset = gfx.camera.x * parallax;
   for (let x = 0; x <= W; x += 10) {
     const y = base
       + Math.sin((x + offset) * freq) * amplitude
@@ -842,31 +925,38 @@ function formatTime(seconds) {
   return `${mins}:${secs.toString().padStart(2, "0")}`;
 }
 
+function visibleFrame() {
+  return gfx.visibleFrame();
+}
+
 function drawHud() {
+  const frame = visibleFrame();
+  const barX = frame.left + 16;
+  const barY = frame.top + 14;
+  const barW = Math.max(280, frame.right - frame.left - 32);
   ctx.fillStyle = "rgba(10, 12, 24, 0.38)";
-  pathRound(16, 14, W - 32, 46, 14);
+  pathRound(barX, barY, barW, 46, 14);
   ctx.fill();
 
-  for (let i = 0; i < 3; i += 1) drawHeart(40 + i * 28, 37, i < lives);
+  for (let i = 0; i < 3; i += 1) drawHeart(barX + 24 + i * 28, barY + 23, i < lives);
 
-  text(level.name, W / 2, 37, 18, "#fff6e8");
+  text(level.name, barX + barW / 2, barY + 23, 18, "#fff6e8");
 
   const got = level.coins.filter((coin) => coin.taken).length;
   ctx.fillStyle = "#f2c14e";
   ctx.beginPath();
-  ctx.arc(W - 118, 37, 8, 0, Math.PI * 2);
+  ctx.arc(barX + barW - 102, barY + 23, 8, 0, Math.PI * 2);
   ctx.fill();
-  text(`${got}/${level.coins.length}`, W - 78, 37, 18, "#fff6e8", "left");
+  text(`${got}/${level.coins.length}`, barX + barW - 84, barY + 23, 18, "#fff6e8", "left");
 
   if (levelIndex === 0 && elapsed < 8 && state === "playing") {
-    textShadow("Setas ou A/D · segure espaço para pular mais alto", W / 2, H - 28, 16, "#fff6e8");
+    textShadow("Setas ou A/D · segure espaço para pular mais alto", (frame.left + frame.right) / 2, frame.bottom - 64, 16, "#fff6e8");
   }
-
 
   if (intro > 0 && state === "playing") {
     ctx.globalAlpha = Math.min(1, intro / 0.45);
-    textShadow(level.name, W / 2, 112, 34, "#fff6e8");
-    textShadow(`Fase ${levelIndex + 1} de ${LEVELS.length}`, W / 2, 150, 16, "#ffe8c8");
+    textShadow(level.name, (frame.left + frame.right) / 2, frame.top + 112, 34, "#fff6e8");
+    textShadow(`Fase ${levelIndex + 1} de ${levelCount}`, (frame.left + frame.right) / 2, frame.top + 150, 16, "#ffe8c8");
     ctx.globalAlpha = 1;
   }
 }
@@ -888,11 +978,8 @@ function drawCard(title, lines, hint) {
 }
 
 function drawWorld() {
-  drawSky();
-  ctx.save();
-  ctx.scale(ZOOM, ZOOM);
-  ctx.translate(-Math.round(cam), -Math.round(camY));
-
+  gfx.screen(drawSky);
+  gfx.world(() => {
   for (const platform of level.platforms) drawPlatform(platform);
   for (const spike of level.spikes) drawSpikes(spike);
   level.coins.forEach(drawCoin);
@@ -920,10 +1007,11 @@ function drawWorld() {
     ctx.fillRect(particle.x, particle.y, particle.size, particle.size);
   }
   ctx.globalAlpha = 1;
-  ctx.restore();
+  });
 
-  if (shake > 2) {
-    ctx.fillStyle = `rgba(180, 32, 40, ${shake / 48})`;
+  gfx.screen(() => {
+  if (gfx.camera.shake > 2) {
+    ctx.fillStyle = `rgba(180, 32, 40, ${gfx.camera.shake / 48})`;
     ctx.fillRect(0, 0, W, H);
   }
 
@@ -940,14 +1028,84 @@ function drawWorld() {
       "O raposo não chegou na bandeira.",
       "A fase recomeça com 3 vidas.",
     ], "Enter ou clique para tentar de novo");
-  } else if (state === "victory") {
-    const perfect = bank === TOTAL_COINS ? "Todas as moedas." : "Dá para pegar mais moedas.";
-    drawCard("Bandeira alcançada", [
-      `Moedas: ${bank} de ${TOTAL_COINS}`,
-      `Tempo: ${formatTime(elapsed)}`,
-      perfect,
-    ], "Enter ou clique para voltar ao início");
   }
+  });
+}
+
+function drawName(x, y, name, sub, waving) {
+  if (waving) textShadow("oi!", x + PLAYER_W / 2, y - 46, 12, "#f2c14e");
+  textShadow(name, x + PLAYER_W / 2, y - 30, 11, "#fff6e8");
+  if (sub) textShadow(sub, x + PLAYER_W / 2, y - 16, 8, "#ffe8c8");
+}
+
+function drawLobby() {
+  gfx.screen(drawSky);
+  gfx.world(() => {
+  for (const platform of level.platforms) drawPlatform(platform);
+
+  ctx.fillStyle = "#6b4423";
+  ctx.fillRect(616, 392, 8, 58);
+  ctx.fillStyle = "#c4a574";
+  pathRound(572, 322, 96, 68, 8);
+  ctx.fill();
+  text("SALTO", 620, 346, 13, "#3d2914");
+  text("20 fases", 620, 366, 8, "#5c4a3a", "center", 600);
+
+  const nearSign = Math.abs(player.x + player.w / 2 - 620) < 90;
+  if (nearSign) {
+    textShadow("A bandeira de cada fase abre a próxima.", 620, 300, 8, "#fff6e8");
+  }
+
+  const flame = 6 + Math.sin(time * 10) * 2;
+  ctx.fillStyle = "#6b4423";
+  ctx.fillRect(1388, 438, 28, 8);
+  ctx.fillStyle = "#e07a3d";
+  ctx.beginPath();
+  ctx.arc(1402, 434, flame, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#f2c14e";
+  ctx.beginPath();
+  ctx.arc(1402, 430, flame * 0.55, 0, Math.PI * 2);
+  ctx.fill();
+
+  drawFlag({ x: 1880, y: 300, w: 36, h: 70 });
+  textShadow("praça", 1888, 286, 10, "#fff6e8");
+
+  const drawActor = (x, y, pose, name, sub, waving) => {
+    ctx.fillStyle = "rgba(0, 0, 0, 0.25)";
+    ctx.beginPath();
+    ctx.ellipse(x + PLAYER_W / 2, y + PLAYER_H + 2, 12, 4, 0, 0, Math.PI * 2);
+    ctx.fill();
+    drawFox(x, y, pose);
+    drawName(x, y, name, sub, waving);
+  };
+
+  for (const mate of mates) {
+    drawActor(
+      mate.drawX ?? mate.x,
+      mate.drawY ?? mate.y,
+      {
+        facing: mate.facing || 1,
+        walk: mate.walk || 0,
+        vy: 0,
+        onGround: (mate.drawY ?? mate.y) > 360,
+        land: 0,
+      },
+      mate.nick,
+      mate.country,
+      mate.emote
+    );
+  }
+
+  drawActor(
+    player.x,
+    player.y,
+    player,
+    profile ? profile.nick : "",
+    profile ? profile.country : "",
+    performance.now() < emoteUntil
+  );
+  });
 }
 
 function drawMenu() {
@@ -959,57 +1117,45 @@ function drawMenu() {
   const idle = Math.sin(time * 2) * 0.15;
   drawFox(250, 360, { facing: 1, walk: time * 2, vy: 0, onGround: true, land: idle > 0.1 ? 0 : 0 });
 
-  textShadow("Salto", W / 2, 92, 72, "#fff6e8");
-  textShadow("Leve o raposo até a bandeira.", W / 2, 158, 22, "#fff6e8");
-  textShadow("Setas ou A/D para mover · Espaço para pular", W / 2, 198, 16, "#ffe8c8");
-  textShadow("Segure espaço para pular mais alto · R reinicia · M silencia", W / 2, 224, 16, "#ffe8c8");
+  textShadow("Salto", W / 2, 86, 68, "#fff6e8");
+  textShadow(profile ? `${profile.nick} · ${profile.country}` : "Vinte fases até a última bandeira.", W / 2, 148, 22, "#fff6e8");
+  const progressLine = !profile
+    ? "Entre com apelido e país para começar."
+    : profile.completed
+      ? "As 20 fases estão concluídas."
+      : profile.level > 0
+        ? `Continuar na fase ${profile.level + 1} de ${levelCount}.`
+        : `Fase 1 de ${levelCount}.`;
+  textShadow(progressLine, W / 2, 182, 18, "#ffe8c8");
+  textShadow("Setas ou A/D · Espaço pula · segure para ir mais alto", W / 2, 214, 16, "#ffe8c8");
 
   const pulse = 0.45 + Math.sin(time * 3) * 0.55;
   ctx.globalAlpha = 0.35 + pulse * 0.65;
-  textShadow("Enter ou clique para jogar", W / 2, 300, 20, "#fff6e8");
+  const startLine = !profile
+    ? ""
+    : profile.completed
+      ? "Enter para jogar de novo"
+      : profile.level > 0
+        ? "Enter para continuar"
+        : "Enter ou clique para jogar";
+  if (startLine) textShadow(startLine, W / 2, 292, 20, "#fff6e8");
   ctx.globalAlpha = 1;
 }
 
-function resize() {
-  const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  canvas.width = Math.round(W * dpr);
-  canvas.height = Math.round(H * dpr);
-}
-
-function beginFrame() {
-  const dpr = canvas.width / W;
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.clearRect(0, 0, W, H);
-}
-
 function draw() {
-  beginFrame();
-  const jx = shake > 0 ? (Math.random() - 0.5) * shake : 0;
-  const jy = shake > 0 ? (Math.random() - 0.5) * shake : 0;
-  ctx.save();
-  ctx.translate(jx, jy);
-  if (state === "menu") drawMenu();
+  if (state === "menu") gfx.screen(drawMenu);
+  else if (state === "lobby") drawLobby();
   else drawWorld();
-  ctx.restore();
-}
-
-let last = performance.now();
-function frame(now) {
-  const dt = Math.min(0.033, (now - last) / 1000);
-  last = now;
-  update(dt);
-  draw();
-  requestAnimationFrame(frame);
 }
 
 function holdButton(button, code) {
   const down = (event) => {
     event.preventDefault();
-    keys.add(code);
+    Salto.Input.setHeld(code, true);
   };
   const up = (event) => {
     event.preventDefault();
-    keys.delete(code);
+    Salto.Input.setHeld(code, false);
   };
   button.addEventListener("pointerdown", down);
   button.addEventListener("pointerup", up);
@@ -1017,40 +1163,327 @@ function holdButton(button, code) {
   button.addEventListener("pointercancel", up);
 }
 
-window.addEventListener("keydown", (event) => {
-  if (["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.code)) {
-    event.preventDefault();
-  }
-  keys.add(event.code);
-  if (event.repeat) return;
-  if (event.code === "Enter" || event.code === "Space") {
-    if (state !== "playing") {
-      if (event.code === "Space" && state === "playing") return;
-      continueGame();
-      return;
-    }
-  }
-  if (event.code === "KeyR" && state === "playing") startLevel(levelIndex);
-  if (event.code === "KeyM") muted = !muted;
-});
-
-window.addEventListener("keyup", (event) => {
-  keys.delete(event.code);
-});
-
 window.addEventListener("blur", () => {
-  keys.clear();
+  Salto.Input.clear();
 });
 
 canvas.addEventListener("pointerdown", () => {
-  if (state !== "playing") continueGame();
+  if (panelsOpen()) return;
+  if (state === "cleared" || state === "gameover") continueGame();
 });
 
 holdButton(document.getElementById("btn-left"), "left");
 holdButton(document.getElementById("btn-right"), "right");
 holdButton(document.getElementById("btn-jump"), "jump");
 
-document.body.dataset.state = state;
-resize();
-window.addEventListener("resize", resize);
-requestAnimationFrame(frame);
+function panelsOpen() {
+  const gate = document.getElementById("gate");
+  const save = document.getElementById("save");
+  return Boolean((gate && !gate.hidden) || (save && !save.hidden));
+}
+
+function applyBodyState() {
+  const gate = document.getElementById("gate");
+  const save = document.getElementById("save");
+  if (!profile || (gate && !gate.hidden)) {
+    document.body.dataset.state = "gate";
+    return;
+  }
+  if (save && !save.hidden) {
+    document.body.dataset.state = "save";
+    return;
+  }
+  document.body.dataset.state = state;
+}
+
+function renderPresence() {
+  if (!profile) return;
+  const phase = profile.completed ? `${levelCount} fases concluídas` : `Fase ${profile.level + 1} de ${levelCount}`;
+  document.getElementById("lobby-nick").textContent = profile.nick;
+  document.getElementById("lobby-meta").textContent = profile.country;
+  document.getElementById("lobby-phase").textContent = `${phase} · ${profile.coins || 0} moedas`;
+  const play = document.getElementById("play-btn");
+  if (profile.completed) play.textContent = "JOGAR DE NOVO";
+  else if (profile.level > 0) play.textContent = "CONTINUAR";
+  else play.textContent = "JOGAR";
+  const saveBtn = document.getElementById("open-save");
+  if (saveBtn) saveBtn.hidden = !(profile.completed && !profile.saved);
+}
+
+function renderSquad(people) {
+  const list = document.getElementById("squad-list");
+  if (!list) return;
+  list.replaceChildren();
+  if (!people.length) {
+    const item = document.createElement("li");
+    item.textContent = "Só você por aqui.";
+    list.appendChild(item);
+    return;
+  }
+  for (const person of people) {
+    const item = document.createElement("li");
+    item.textContent = `${person.nick} · ${person.country}`;
+    const detail = document.createElement("small");
+    if (person.inMatch) detail.textContent = `Em partida · fase ${person.level + 1}`;
+    else if (person.completed) detail.textContent = "Concluiu as fases";
+    else detail.textContent = "No lobby";
+    item.appendChild(detail);
+    list.appendChild(item);
+  }
+}
+
+function inMatchNow() {
+  return state === "playing" || state === "cleared" || state === "gameover" || state === "victory";
+}
+
+function pushPose() {
+  if (!profile || poseBusy) return;
+  poseBusy = true;
+  fetch("/api/lobby", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      x: state === "lobby" ? player.x : lobbyAnchorX,
+      y: state === "lobby" ? player.y : LOBBY.spawn.y,
+      facing: player.facing,
+      emote: performance.now() < emoteUntil,
+      inMatch: inMatchNow(),
+    }),
+  }).then((response) => (response.ok ? response.json() : null)).then((data) => {
+    if (!data) return;
+    const self = data.players.find((person) => person.self);
+    if (self && state === "lobby" && Math.hypot(self.x - player.x, self.y - player.y) > 80) {
+      player.x = self.x;
+      player.y = self.y;
+      player.vx = 0;
+      player.vy = 0;
+      lobbyAnchorX = player.x;
+    }
+    const others = data.players.filter((person) => !person.self);
+    const walking = others.filter((person) => !person.inMatch);
+    for (const person of walking) {
+      const prev = mates.find((mate) => mate.nick === person.nick && mate.country === person.country);
+      person.drawX = prev ? prev.drawX : person.x;
+      person.drawY = prev ? prev.drawY : person.y;
+      person.walk = prev ? prev.walk : 0;
+    }
+    mates = walking;
+    renderSquad(others);
+  }).catch(() => {}).finally(() => {
+    poseBusy = false;
+  });
+}
+
+async function refreshOnline() {
+  if (!profile) return;
+  try {
+    const response = await fetch("/api/online");
+    if (!response.ok) return;
+    const data = await response.json();
+    renderSquad(data.players.filter((person) => !person.self));
+  } catch (err) {
+    /* o servidor local pode estar fora do ar */
+  }
+}
+
+function syncProgress() {
+  if (!profile) return Promise.resolve();
+  return fetch("/api/session/progress", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({}),
+  }).then((response) => (response.ok ? response.json() : null)).then((data) => {
+    if (!data) return;
+    profile.saved = data.saved;
+    profile.accountUsername = data.accountUsername;
+    profile.level = data.level;
+    profile.coins = data.coins;
+    profile.elapsed = data.elapsed;
+    profile.completed = Boolean(data.completed);
+    if (state === "lobby") {
+      bank = data.coins;
+      elapsed = data.elapsed;
+    }
+    renderPresence();
+  }).catch(() => {});
+}
+
+function showSave() {
+  const save = document.getElementById("save");
+  document.getElementById("save-stats").textContent = `Moedas: ${bank} de ${TOTAL_COINS}. Tempo: ${formatTime(elapsed)}.`;
+  document.getElementById("save-error").textContent = "";
+  const done = document.getElementById("save-done");
+  done.hidden = !(profile && profile.saved);
+  if (profile && profile.saved) done.textContent = `Já existe um recorde na conta ${profile.accountUsername}. A senha atualiza esse resultado.`;
+  save.hidden = false;
+  applyBodyState();
+  renderPresence();
+}
+
+function closeSave() {
+  document.getElementById("save").hidden = true;
+  enterLobby();
+}
+
+async function bootSession() {
+  const gate = document.getElementById("gate");
+  const error = document.getElementById("gate-error");
+  const select = document.querySelector("#gate-form select");
+  try {
+    const metaResponse = await fetch("/api/meta");
+    if (!metaResponse.ok) throw new Error("sem servidor");
+    const meta = await metaResponse.json();
+    levelCount = meta.levels || levelCount;
+    TOTAL_COINS = meta.totalCoins || 0;
+    select.innerHTML = meta.countries.map((country) => `<option value="${country}">${country}</option>`).join("");
+    const response = await fetch("/api/session");
+    if (response.ok) {
+      profile = await response.json();
+      gate.hidden = true;
+      enterLobby();
+      refreshOnline();
+    }
+  } catch (err) {
+    error.textContent = "Inicie o servidor local com: node server.js";
+  }
+  applyBodyState();
+}
+
+document.getElementById("gate-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const error = document.getElementById("gate-error");
+  error.textContent = "";
+  const response = await fetch("/api/session", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      nick: event.target.nick.value,
+      country: event.target.country.value,
+    }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    error.textContent = data.error || "Não foi possível entrar.";
+    return;
+  }
+  profile = data;
+  document.getElementById("gate").hidden = true;
+  enterLobby();
+  refreshOnline();
+});
+
+document.getElementById("save-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const error = document.getElementById("save-error");
+  error.textContent = "";
+  const response = await fetch("/api/account", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      username: event.target.username.value,
+      password: event.target.password.value,
+    }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    error.textContent = data.error || "Não salvou.";
+    return;
+  }
+  profile.saved = true;
+  profile.accountUsername = data.account.username;
+  const done = document.getElementById("save-done");
+  done.hidden = false;
+  done.textContent = "Progresso salvo neste computador.";
+  renderPresence();
+});
+
+document.getElementById("save-skip").addEventListener("click", closeSave);
+document.getElementById("open-save").addEventListener("click", showSave);
+document.getElementById("logout").addEventListener("click", async () => {
+  await fetch("/api/logout", { method: "POST" });
+  profile = null;
+  mates = [];
+  state = "menu";
+  document.getElementById("save").hidden = true;
+  document.getElementById("gate").hidden = false;
+  applyBodyState();
+});
+
+function toggleFullscreen() {
+  if (!document.fullscreenElement) {
+    document.documentElement.requestFullscreen().catch(() => {});
+    return;
+  }
+  document.exitFullscreen().catch(() => {});
+}
+
+function syncFullscreenLabel() {
+  const label = document.fullscreenElement ? "Janela" : "Tela cheia";
+  for (const id of ["fullscreen", "fullscreen-match"]) {
+    const button = document.getElementById(id);
+    if (button) button.textContent = label;
+  }
+}
+
+document.getElementById("fullscreen").addEventListener("click", toggleFullscreen);
+document.getElementById("fullscreen-match").addEventListener("click", toggleFullscreen);
+document.getElementById("play-btn").addEventListener("click", () => {
+  document.getElementById("play-btn").blur();
+  startGame();
+});
+document.getElementById("back-lobby").addEventListener("click", leaveMatch);
+document.addEventListener("fullscreenchange", () => {
+  syncFullscreenLabel();
+  gfx.resize();
+});
+
+setInterval(refreshOnline, 4000);
+
+class GameDirector extends Salto.Behaviour {
+  update() {
+    update(Salto.Time.deltaTime);
+    const now = performance.now();
+    if (profile && document.getElementById("gate").hidden && now > nextPose) {
+      nextPose = now + 150;
+      pushPose();
+    }
+    if (profile && now > nextSync) {
+      nextSync = now + 4000;
+      syncProgress();
+    }
+    if ((Salto.Input.getKeyDown("Enter") || Salto.Input.getKeyDown("Space")) && (state === "cleared" || state === "gameover" || state === "victory")) {
+      continueGame();
+    }
+    if (Salto.Input.getKeyDown("KeyE") && state === "lobby") emoteUntil = performance.now() + 1600;
+    if (Salto.Input.getKeyDown("KeyF")) toggleFullscreen();
+    if (Salto.Input.getKeyDown("KeyR") && state === "playing") requestMatch(false);
+    if (Salto.Input.getKeyDown("KeyM")) muted = !muted;
+  }
+
+  onRender() {
+    draw();
+  }
+}
+
+Salto.Input.gate = (event) => {
+  const tag = event.target && event.target.tagName;
+  if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA" || tag === "BUTTON") return false;
+  return !panelsOpen();
+};
+
+const scene = new Salto.Scene("Salto");
+const director = new Salto.GameObject("Diretor");
+director.tag = "Director";
+director.addComponent(GameDirector);
+scene.add(director);
+
+const cameraObject = new Salto.GameObject("Câmera");
+cameraObject.tag = "MainCamera";
+const mainCamera = cameraObject.addComponent(Salto.Camera);
+mainCamera.zoom = ZOOM;
+scene.add(cameraObject);
+Salto.Scene.active = scene;
+for (const component of scene.behaviours()) Salto._syncComponent(component);
+
+bootSession();
+Salto.Application.run();

@@ -1,0 +1,8 @@
+{
+  "name": "salto",
+  "description": "Jogo de plataforma open source no navegador, com servidor local.",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "license": "MIT"
+}

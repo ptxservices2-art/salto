@@ -6,17 +6,86 @@
   <title>Salto</title>
   <link rel="stylesheet" href="style.css">
 </head>
-<body data-state="menu">
+<body data-state="gate">
   <p class="sr-only">
-    Salto é um jogo de plataforma. Use as setas ou as teclas A e D para mover,
-    e espaço para pular. Chegue até a bandeira.
+    Salto é um jogo de plataforma. Entre com apelido e país, atravesse 20 fases
+    e, no fim, crie um login para salvar o resultado.
   </p>
   <canvas id="game" width="960" height="540" aria-label="Jogo Salto"></canvas>
+  <div id="lobby-ui">
+    <aside id="profile-card" class="hud-card">
+      <div class="avatar" aria-hidden="true"></div>
+      <div>
+        <strong id="lobby-nick">Salto</strong>
+        <span id="lobby-meta">Lobby</span>
+        <span id="lobby-phase">Fase 1 de 20</span>
+      </div>
+    </aside>
+    <aside id="squad" class="hud-card">
+      <h2>Online</h2>
+      <ul id="squad-list"></ul>
+    </aside>
+    <aside id="info-card" class="hud-card">
+      <h2>Como funciona</h2>
+      <p>Este é o lobby, fora da partida. Ande, pule e cumprimente. A fase só começa quando você quiser.</p>
+      <p>São 20 fases e 3 vidas. As moedas são opcionais. A bandeira abre a próxima fase.</p>
+      <p>Setas ou A/D andam. Espaço pula. E cumprimenta. F deixa em tela cheia.</p>
+    </aside>
+    <div id="top-actions">
+      <button type="button" id="fullscreen">Tela cheia</button>
+      <button type="button" id="open-save" hidden>Salvar</button>
+      <button type="button" id="logout">Sair</button>
+    </div>
+    <button type="button" id="play-btn">JOGAR</button>
+  </div>
+  <div id="match-ui">
+    <button type="button" id="back-lobby">Lobby</button>
+    <button type="button" id="fullscreen-match">Tela cheia</button>
+  </div>
   <div id="touch" aria-hidden="true">
     <button type="button" id="btn-left" aria-label="Esquerda">◀</button>
     <button type="button" id="btn-right" aria-label="Direita">▶</button>
     <button type="button" id="btn-jump" aria-label="Pular">Pular</button>
   </div>
+
+  <div id="gate" class="panel">
+    <form id="gate-form" class="card">
+      <h1>Salto</h1>
+      <p>Apelido e país valem só nesta sessão, neste computador. Depois você entra no lobby: a partida não começa sozinha.</p>
+      <label>Apelido
+        <input name="nick" maxlength="16" autocomplete="nickname" required>
+      </label>
+      <label>País
+        <select name="country" required></select>
+      </label>
+      <p id="gate-error" class="error" role="alert"></p>
+      <button type="submit">Entrar na sessão</button>
+    </form>
+  </div>
+
+  <div id="save" class="panel" hidden>
+    <form id="save-form" class="card">
+      <h2>20 fases concluídas</h2>
+      <p id="save-stats"></p>
+      <p>Crie um usuário e uma senha para guardar este resultado neste computador. Se a conta já existe, a senha confirma e atualiza o recorde.</p>
+      <label>Usuário
+        <input name="username" minlength="3" maxlength="20" autocomplete="username" required>
+      </label>
+      <label>Senha
+        <input name="password" type="password" minlength="6" maxlength="72" autocomplete="new-password" required>
+      </label>
+      <p id="save-error" class="error" role="alert"></p>
+      <p id="save-done" hidden></p>
+      <button type="submit">Salvar progresso</button>
+      <button type="button" id="save-skip" class="ghost">Agora não</button>
+    </form>
+  </div>
+
+  <script src="engine/core.js"></script>
+  <script src="engine/input.js"></script>
+  <script src="engine/graphics.js"></script>
+  <script src="engine/camera.js"></script>
+  <script src="engine/application.js"></script>
   <script src="game.js"></script>
 </body>
 </html>
